@@ -9,50 +9,44 @@ import os
 import openai
 from fpdf import FPDF
 
+# replace with actual OpenAI API key
 openai.api_key = ""
 
 HTTP_URL_PATTERN = r'^http[s]{0,1}://.+$'
 
-domain = "edition.cnn.com"
-full_url = "https://edition.cnn.com/"
+#domain = "edition.cnn.com"
+domain = input("Enter your domain to scrape (without https://): ")
+full_url = "https://" + str(domain)
 
-print('===== scraping on ' + domain + " =======")
-TOTAL_PAGE_TO_SCRAPE = int(input("number of pages to scrape: "))
+print('===== Scraping on ' + domain + " =====")
+TOTAL_PAGE_TO_SCRAPE = int(input("Number of pages to scrape: "))
 
 class HyperlinkParser(HTMLParser):
     def __init__(self):
         super().__init__()
         self.hyperlinks = []
-
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
-
         if tag == "a" and "href" in attrs:
             self.hyperlinks.append(attrs["href"])
-
 
 def get_hyperlinks(url):
     try:
         with urllib.request.urlopen(url) as response:
             if not response.info().get('Content-Type').startswith("text/html"):
                 return []
-            
             html = response.read().decode('utf-8')
     except Exception as e:
         print(e)
         return []
-
     parser = HyperlinkParser()
     parser.feed(html)
-
     return parser.hyperlinks
-
 
 def get_domain_hyperlinks(local_domain, url):
     clean_links = []
     for link in set(get_hyperlinks(url)):
         clean_link = None
-
         if re.search(HTTP_URL_PATTERN, link):
             url_obj = urlparse(link)
             if url_obj.netloc == local_domain:
@@ -72,47 +66,33 @@ def get_domain_hyperlinks(local_domain, url):
                 if clean_link.endswith("/") :
                     clean_link = clean_link[:-1]
                 clean_links.append(clean_link)
-        
-        #print('.')
     return list(set(clean_links))
-
 
 def crawl(url):
     local_domain = urlparse(url).netloc
     queue = deque([url])
-    
     seen = set([url])
-
     if not os.path.exists("text/"):
             os.mkdir("text/")
-
     if not os.path.exists("text/"+local_domain+"/"):
             os.mkdir("text/" + local_domain + "/")
-
     counter = 0
     while queue:
         if (counter == TOTAL_PAGE_TO_SCRAPE + 1):
-            print("scraped pages: " + str(counter-1) + " (ignore the first one)")
+            print("Scraped pages: " + str(counter-1) + " (ignore the first one)")
             break
         print(counter)
         counter += 1
-        
         url = queue.pop()
         print(url) 
-
         with open('text/'+local_domain+'/'+url[8:].replace("/", "_") + ".txt", "w", encoding="UTF-8") as f:
             soup = BeautifulSoup(requests.get(url).text, "html.parser")
             text = soup.findAll('p')
-            
-            
             if ("You need to enable JavaScript to run this app." in text):
                 print("Unable to parse page " + url + " due to JavaScript being required")
-            
             for txt in text:
                 text_p_tag = txt.get_text()
                 f.write(text_p_tag)
-            
-
         for link in get_domain_hyperlinks(local_domain, url):
             if link not in seen:
                 queue.append(link)
@@ -120,8 +100,7 @@ def crawl(url):
 
 crawl(full_url)
 
-LANGUAGE = input("translate to: ")
-
+LANGUAGE = input("Destination language: ")
 
 def string_to_pdf(text, output_file):
     pdf = FPDF()
@@ -131,13 +110,10 @@ def string_to_pdf(text, output_file):
     pdf.multi_cell(0, 10, encoded_text.decode('latin-1'))
     pdf.output(output_file)
 
-
 for file in os.listdir("text/" + domain + "/"):
     with open("text/" + domain + "/" + file, "r", encoding="UTF-8") as f:
         text = f.read()
-        #print(text)
-        
-        promt_ = "translate the following to " + LANGUAGE + ": " + text
+        promt_ = "Translate the following to " + LANGUAGE + ": " + text
         
         response = openai.Completion.create(
             model="text-davinci-003",
@@ -149,17 +125,11 @@ for file in os.listdir("text/" + domain + "/"):
             presence_penalty=0.0
         )
         #res_text = response['choices'][0]['text']
-        #print(res_text)
-        #print(response)
-        
-        print("translating...")
+        print("Translating...")
         if not os.path.exists("pdf"):
             os.mkdir("pdf")
-
         filepath = "pdf/"
         filename = filepath + file + ".pdf"
-
-        #res_text = response['choices'][0]['text']
         string_to_pdf(str(response['choices'][0]['text']), filename)
-        print("saved to pdf")
+        print("Saved to pdf")
        
